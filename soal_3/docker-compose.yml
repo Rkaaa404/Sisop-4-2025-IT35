@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  antink-server:
+    build: ./antink-server
+    volumes:
+      - ./host_dir:/mnt/it24_host
+      - ./mount_dir:/mnt/antink_mount
+      - ./log:/var/log
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+
+  antink-logger:
+    build: ./antink-logger
+    volumes:
+      - ./log:/var/log
+    depends_on:
+      - antink-server
+
+volumes:
+  antink_mount:
+  it24_host:
+  antink-logs:
