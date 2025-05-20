@@ -182,6 +182,5 @@ int main(int argc, char *argv[]) {
 
     process_all_files();
 
-    char *fuse_argv[] = { argv[0], argv[1], "-o", "nonempty" };
-    return fuse_main(4, fuse_argv, &operations, NULL);
+    return fuse_main(argc, argv, &operations, NULL);
 }
