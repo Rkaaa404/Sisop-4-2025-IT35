@@ -1,192 +1,187 @@
-#define FUSE_USE_VERSION 26
-
-#include <fuse.h>
+#define FUSE_USE_VERSION 31
+#define _DEFAULT_SOURCE
+#include <dirent.h>
+#include <fuse3/fuse.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
-#include <time.h>
-#include <unistd.h>
 #include <dirent.h>
+#include <unistd.h>
 #include <sys/stat.h>
-#include <ctype.h>
+#include <time.h>
+#include <errno.h>
 
-void download() {
-    system("wget -O anomali.zip \"https://drive.google.com/uc?export=download&id=1hi_GDdP51Kn2JJMw02WmCOxuc3qrXzh5\"");
-    system("unzip -o anomali.zip -d .");
-    system("rm -f anomali.zip");
+#define SOURCE_FOLDER "anomali"
+#define IMAGE_FOLDER "image"
+#define LOG_FILE "conversion.log"
+#define DOWNLOAD_URL "https://drive.google.com/uc?id=1hi_GDdP51Kn2JJMw02WmCOxuc3qrXzh5&export=download"
+#define ZIP_NAME "data.zip"
+
+static int is_hex_char(char c) {
+    return (c >= '0' && c <= '9') || 
+           (c >= 'a' && c <= 'f') || 
+           (c >= 'A' && c <= 'F');
 }
 
-void create_folder(const char *path) {
+void create_image_directory() {
     struct stat st = {0};
-    if (stat(path, &st) == -1) {
-        mkdir(path, 0755);
+    if (stat(IMAGE_FOLDER, &st) == -1) {
+        mkdir(IMAGE_FOLDER, 0755);
     }
 }
 
-int is_hex_char(char c) {
-    return isdigit(c) || (tolower(c) >= 'a' && tolower(c) <= 'f');
-}
-
-unsigned char hex_to_byte(char a, char b) {
-    unsigned char value = 0;
-    if (isdigit(a)) value += (a - '0') << 4;
-    else value += (tolower(a) - 'a' + 10) << 4;
-
-    if (isdigit(b)) value += (b - '0');
-    else value += (tolower(b) - 'a' + 10);
-
-    return value;
-}
-
-void convert(const char *filename) {
-    char path[256];
-    snprintf(path, sizeof(path), "anomali/%s", filename);
-
-    FILE *fp = fopen(path, "r");
-    if (!fp) return;
-
-    char *filtered = malloc(1);
-    size_t cap = 1, len = 0;
-    int c;
-
-    while ((c = fgetc(fp)) != EOF) {
-        if (is_hex_char(c)) {
-            if (len + 1 >= cap) {
-                cap *= 2;
-                filtered = realloc(filtered, cap);
-            }
-            filtered[len++] = c;
-        }
-    }
-    fclose(fp);
-
-    if (len % 2 != 0) len--;
-    filtered[len] = '\0';
-
-    time_t now = time(NULL);
-    struct tm *t = localtime(&now);
-    char imgname[256];
-    snprintf(imgname, sizeof(imgname), "%.*s_image_%04d-%02d-%02d_%02d:%02d:%02d.png",
-             (int)(strlen(filename) - 4), filename,
-             t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-             t->tm_hour, t->tm_min, t->tm_sec);
-
-    char imgpath[256];
-    snprintf(imgpath, sizeof(imgpath), "anomali/image/%s", imgname);
-
-    FILE *out = fopen(imgpath, "wb");
-    if (!out) {
-        free(filtered);
-        return;
-    }
-
-    for (int i = 0; i < len; i += 2) {
-        unsigned char byte = hex_to_byte(filtered[i], filtered[i+1]);
-        fwrite(&byte, 1, 1, out);
-    }
-
-    fclose(out);
-
-    FILE *log = fopen("anomali/conversion.log", "a");
+void log_conversion(const char *filename, int success) {
+    FILE *log = fopen(LOG_FILE, "a");
     if (log) {
-        fprintf(log, "[%04d-%02d-%02d][%02d:%02d:%02d]: Successfully converted %s to %s\n",
-                t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-                t->tm_hour, t->tm_min, t->tm_sec,
-                filename, imgname);
+        time_t t = time(NULL);
+        struct tm *tm_info = localtime(&t);
+        char time_str[30];
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+        fprintf(log, "[%s] %s: %s\n", time_str, filename, success ? "SUCCESS" : "FAILED");
         fclose(log);
     }
-
-    free(filtered);
-    sleep(1);
 }
 
-void process_all_txt() {
-    DIR *dir = opendir("anomali");
-    if (!dir) return;
+int hex_to_png(const char *filepath) {
+    FILE *fp = fopen(filepath, "r");
+    if (!fp) return 0;
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (strstr(entry->d_name, ".txt")) {
-            char fullpath[512];
-            snprintf(fullpath, sizeof(fullpath), "anomali/%s", entry->d_name);
-            struct stat st;
-            if (stat(fullpath, &st) == 0 && S_ISREG(st.st_mode)) {
-                convert(entry->d_name);
-            }
-        }
+    fseek(fp, 0, SEEK_END);
+    long size = ftell(fp);
+    rewind(fp);
+
+    char *hex_data = malloc(size + 1);
+    fread(hex_data, 1, size, fp);
+    hex_data[size] = '\0';
+    fclose(fp);
+
+    size_t len = strlen(hex_data);
+    char *bin = malloc(len / 2);
+    size_t bin_idx = 0;
+    for (size_t i = 0; i < len; i += 2) {
+        if (!is_hex_char(hex_data[i]) || !is_hex_char(hex_data[i + 1])) continue;
+        char byte_str[3] = {hex_data[i], hex_data[i + 1], '\0'};
+        bin[bin_idx++] = (char)strtol(byte_str, NULL, 16);
     }
 
+    time_t t = time(NULL);
+    struct tm *tm_info = localtime(&t);
+    char imgname[100];
+    const char *base = strrchr(filepath, '/');
+    snprintf(imgname, sizeof(imgname), IMAGE_FOLDER"/%s_image_%04d-%02d-%02d_%02d:%02d:%02d.png",
+             base ? base + 1 : filepath,
+             tm_info->tm_year + 1900, tm_info->tm_mon + 1, tm_info->tm_mday,
+             tm_info->tm_hour, tm_info->tm_min, tm_info->tm_sec);
+
+    FILE *out = fopen(imgname, "wb");
+    if (!out) {
+        free(hex_data);
+        free(bin);
+        return 0;
+    }
+    fwrite(bin, 1, bin_idx, out);
+    fclose(out);
+
+    free(hex_data);
+    free(bin);
+    return 1;
+}
+
+void process_all_files() {
+    create_image_directory();
+    DIR *dir = opendir(SOURCE_FOLDER);
+    if (!dir) return;
+
+    struct dirent *ent;
+    char path[1024];
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_type == DT_REG && strstr(ent->d_name, ".txt")) {
+            snprintf(path, sizeof(path), SOURCE_FOLDER"/%s", ent->d_name);
+            int success = hex_to_png(path);
+            log_conversion(ent->d_name, success);
+        }
+    }
     closedir(dir);
 }
 
-static void *fs_init(struct fuse_conn_info *conn) {
-    (void)conn;
-    download();
-    create_folder("anomali/image");
-    process_all_txt();
-    printf(">> Semua file telah dikonversi.\n");
-    return NULL;
+int file_exists(const char *path) {
+    struct stat st;
+    return stat(path, &st) == 0;
 }
 
-static int fs_getattr(const char *path, struct stat *st) {
-    char real_path[512];
-    snprintf(real_path, sizeof(real_path), "anomali%s", path);
-    return lstat(real_path, st);
+void download_and_extract() {
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd),
+        "wget -q --show-progress -O %s \"%s\" && unzip -o %s && rm %s",
+        ZIP_NAME, DOWNLOAD_URL, ZIP_NAME, ZIP_NAME);
+    system(cmd);
+    printf("Data berhasil diunduh dan diekstrak.\n");
 }
 
-static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
-    (void) offset;
-    (void) fi;
+static int x_getattr(const char *path, struct stat *st, struct fuse_file_info *fi) {
+    char fullpath[1024];
+    snprintf(fullpath, sizeof(fullpath), "%s%s", SOURCE_FOLDER, path);
+    return lstat(fullpath, st);
+}
 
-    char real_path[512];
-    snprintf(real_path, sizeof(real_path), "anomali%s", path);
-
-    DIR *dp = opendir(real_path);
-    if (!dp) return -ENOENT;
-
-    filler(buf, ".", NULL, 0);
-    filler(buf, "..", NULL, 0);
-
+static int x_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                     off_t offset, struct fuse_file_info *fi, enum fuse_readdir_flags flags) {
+    DIR *dp;
     struct dirent *de;
-    while ((de = readdir(dp)) != NULL) {
-        filler(buf, de->d_name, NULL, 0);
-    }
+    char fullpath[1024];
+    snprintf(fullpath, sizeof(fullpath), "%s%s", SOURCE_FOLDER, path);
 
+    dp = opendir(fullpath);
+    if (!dp) return -errno;
+
+    while ((de = readdir(dp)) != NULL) {
+        filler(buf, de->d_name, NULL, 0, 0);
+    }
     closedir(dp);
     return 0;
 }
 
-static int fs_open(const char *path, struct fuse_file_info *fi) {
-    char real_path[512];
-    snprintf(real_path, sizeof(real_path), "anomali%s", path);
-    FILE *f = fopen(real_path, "rb");
-    if (!f) return -ENOENT;
-    fclose(f);
+static int x_open(const char *path, struct fuse_file_info *fi) {
+    char fullpath[1024];
+    snprintf(fullpath, sizeof(fullpath), "%s%s", SOURCE_FOLDER, path);
+    int res = open(fullpath, fi->flags);
+    if (res == -1) return -errno;
+    close(res);
     return 0;
 }
 
-static int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-    (void) fi;
-    char real_path[512];
-    snprintf(real_path, sizeof(real_path), "anomali%s", path);
-    FILE *f = fopen(real_path, "rb");
-    if (!f) return -ENOENT;
-
+static int x_read(const char *path, char *buf, size_t size, off_t offset,
+                  struct fuse_file_info *fi) {
+    char fullpath[1024];
+    snprintf(fullpath, sizeof(fullpath), "%s%s", SOURCE_FOLDER, path);
+    FILE *f = fopen(fullpath, "r");
+    if (!f) return -errno;
     fseek(f, offset, SEEK_SET);
-    size_t res = fread(buf, 1, size, f);
+    int res = fread(buf, 1, size, f);
     fclose(f);
     return res;
 }
 
-static struct fuse_operations fs_oper = {
-    .init       = fs_init,
-    .getattr    = fs_getattr,
-    .readdir    = fs_readdir,
-    .open       = fs_open,
-    .read       = fs_read,
+static const struct fuse_operations operations = {
+    .getattr = x_getattr,
+    .readdir = x_readdir,
+    .open = x_open,
+    .read = x_read,
 };
 
 int main(int argc, char *argv[]) {
-    return fuse_main(argc, argv, &fs_oper, NULL);
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <mountpoint>\n", argv[0]);
+        return 1;
+    }
+
+    if (!file_exists(SOURCE_FOLDER)) {
+        printf("Folder %s belum ada, mulai download...\n", SOURCE_FOLDER);
+        download_and_extract();
+    }
+
+    process_all_files();
+
+    char *fuse_argv[] = { argv[0], argv[1], "-o", "nonempty" };
+    return fuse_main(4, fuse_argv, &operations, NULL);
 }
