@@ -13,11 +13,9 @@
 #include <libgen.h>
 #include <limits.h>
 
-// Global variables
 static char *source_dir = NULL;
 static char *mount_dir = NULL;
 
-// Helper functions
 static char* get_full_path(const char *path, int is_source) {
     char *base_dir = is_source ? source_dir : mount_dir;
     char *full_path = malloc(strlen(base_dir) + strlen(path) + 1);
@@ -29,7 +27,6 @@ static char* get_full_path(const char *path, int is_source) {
     return full_path;
 }
 
-// Determine the module type based on the path
 static char* get_module_type(const char *path) {
     if (strstr(path, "/starter/") != NULL) {
         return "starter";
@@ -49,7 +46,6 @@ static char* get_module_type(const char *path) {
     return NULL;
 }
 
-// Transform path based on module type
 static char* transform_path(const char *path, const char *module_type, int to_source) {
     char *new_path = strdup(path);
     if (!new_path) {
@@ -58,11 +54,10 @@ static char* transform_path(const char *path, const char *module_type, int to_so
     
     if (strcmp(module_type, "starter") == 0) {
         if (to_source) {
-            // No suffix change when going from mount to source
-            // Keep the path as is
+
         } else {
-            // Add .mai suffix when going from source to mount
-            char *temp = malloc(strlen(new_path) + 5); // +5 for ".mai" and null terminator
+
+            char *temp = malloc(strlen(new_path) + 5);  
             if (temp) {
                 strcpy(temp, new_path);
                 strcat(temp, ".mai");
@@ -72,11 +67,10 @@ static char* transform_path(const char *path, const char *module_type, int to_so
         }
     } else if (strcmp(module_type, "metro") == 0) {
         if (to_source) {
-            // No suffix change when going from mount to source
-            // Keep the path as is
+
         } else {
-            // Add .ccc suffix when going from source to mount
-            char *temp = malloc(strlen(new_path) + 5); // +5 for ".ccc" and null terminator
+
+            char *temp = malloc(strlen(new_path) + 5);  
             if (temp) {
                 strcpy(temp, new_path);
                 strcat(temp, ".ccc");
@@ -89,17 +83,17 @@ static char* transform_path(const char *path, const char *module_type, int to_so
     return new_path;
 }
 
-// Transform content based on module type
+ 
 static void transform_content(char *buf, size_t size, const char *module_type, int to_source) {
     if (strcmp(module_type, "metro") == 0) {
-        // For metro module, shift characters by position (mod 256)
+         
         if (to_source) {
-            // Reverse the shift when going from mount to source
+             
             for (size_t i = 0; i < size; i++) {
                 buf[i] = (buf[i] - (i % 256) + 256) % 256;
             }
         } else {
-            // Apply the shift when going from source to mount
+             
             for (size_t i = 0; i < size; i++) {
                 buf[i] = (buf[i] + (i % 256)) % 256;
             }
@@ -107,11 +101,11 @@ static void transform_content(char *buf, size_t size, const char *module_type, i
     }
 }
 
-// FUSE operations
+ 
 static int maimai_getattr(const char *path, struct stat *stbuf) {
     memset(stbuf, 0, sizeof(struct stat));
     
-    // Handle root directory
+     
     if (strcmp(path, "/") == 0) {
         stbuf->st_mode = S_IFDIR | 0755;
         stbuf->st_nlink = 2;
@@ -120,7 +114,7 @@ static int maimai_getattr(const char *path, struct stat *stbuf) {
     
     char *module_type = get_module_type(path);
     if (!module_type) {
-        // Check if it's a top-level directory
+         
         char *path_copy = strdup(path);
         char *dir_name = dirname(path_copy);
         if (strcmp(dir_name, "/") == 0) {
@@ -134,7 +128,7 @@ static int maimai_getattr(const char *path, struct stat *stbuf) {
         return -ENOENT;
     }
     
-    // Transform path if needed
+     
     char *transformed_path = transform_path(path, module_type, 1);
     if (!transformed_path) {
         return -ENOMEM;
@@ -179,7 +173,7 @@ static int maimai_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
     
     char *module_type = get_module_type(path);
     
-    // Add . and .. entries
+     
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
     
@@ -195,10 +189,10 @@ static int maimai_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         
         char *entry_name = strdup(de->d_name);
         
-        // Transform entry name if needed
+         
         if (module_type && de->d_type != DT_DIR) {
-            // No transformation needed for directory listing
-            // Files in source directory have no suffix
+             
+             
         }
         
         filler(buf, entry_name, &st, 0);
@@ -215,7 +209,7 @@ static int maimai_open(const char *path, struct fuse_file_info *fi) {
         return -ENOENT;
     }
     
-    // Transform path if needed
+     
     char *transformed_path = transform_path(path, module_type, 1);
     if (!transformed_path) {
         return -ENOMEM;
@@ -251,7 +245,7 @@ static int maimai_read(const char *path, char *buf, size_t size, off_t offset,
         return -ENOENT;
     }
     
-    // Transform path if needed
+     
     char *transformed_path = transform_path(path, module_type, 1);
     if (!transformed_path) {
         return -ENOMEM;
@@ -275,7 +269,7 @@ static int maimai_read(const char *path, char *buf, size_t size, off_t offset,
     if (res == -1) {
         res = -errno;
     } else {
-        // Transform content if needed
+         
         transform_content(buf, res, module_type, 0);
     }
     
@@ -295,7 +289,7 @@ static int maimai_write(const char *path, const char *buf, size_t size,
         return -ENOENT;
     }
     
-    // Transform path if needed
+     
     char *transformed_path = transform_path(path, module_type, 1);
     if (!transformed_path) {
         return -ENOMEM;
@@ -314,7 +308,7 @@ static int maimai_write(const char *path, const char *buf, size_t size,
         return -errno;
     }
     
-    // Transform content if needed
+     
     char *transformed_buf = malloc(size);
     if (!transformed_buf) {
         close(fd);
@@ -345,7 +339,7 @@ static int maimai_create(const char *path, mode_t mode, struct fuse_file_info *f
         return -ENOENT;
     }
     
-    // Transform path if needed
+     
     char *transformed_path = transform_path(path, module_type, 1);
     if (!transformed_path) {
         return -ENOMEM;
@@ -375,7 +369,7 @@ static int maimai_unlink(const char *path) {
         return -ENOENT;
     }
     
-    // Transform path if needed
+     
     char *transformed_path = transform_path(path, module_type, 1);
     if (!transformed_path) {
         return -ENOMEM;
@@ -443,28 +437,28 @@ static struct fuse_operations maimai_oper = {
 };
 
 int main(int argc, char *argv[]) {
-    // Check for minimum arguments
+     
     if (argc < 3) {
         fprintf(stderr, "Usage: %s source_dir mount_point [FUSE options]\n", argv[0]);
         return 1;
     }
     
-    // Get absolute paths for source and mount directories
+     
     char source_path[PATH_MAX];
     char mount_path[PATH_MAX];
     
-    // Process source directory
+     
     if (realpath(argv[1], source_path) == NULL) {
         fprintf(stderr, "Failed to resolve source path: %s\n", argv[1]);
         return 1;
     }
     
-    // Process mount point
+     
     if (argv[2][0] == '/') {
-        // Absolute path
+         
         strncpy(mount_path, argv[2], PATH_MAX - 1);
     } else {
-        // Relative path
+         
         char cwd[PATH_MAX];
         if (getcwd(cwd, sizeof(cwd)) == NULL) {
             fprintf(stderr, "Failed to get current working directory\n");
@@ -481,7 +475,7 @@ int main(int argc, char *argv[]) {
         snprintf(mount_path, PATH_MAX - 1, "%s/%s", cwd, argv[2]);
     }
     
-    // Add trailing slash if not present
+     
     size_t src_len = strlen(source_path);
     if (source_path[src_len - 1] != '/') {
         source_path[src_len] = '/';
@@ -505,8 +499,8 @@ int main(int argc, char *argv[]) {
     printf("Source directory: %s\n", source_dir);
     printf("Mount directory: %s\n", mount_dir);
     
-    // Prepare FUSE arguments
-    char **fuse_argv = malloc((argc + 4) * sizeof(char *));  // +4 for program name, -f, -o, and nonempty options
+     
+    char **fuse_argv = malloc((argc + 4) * sizeof(char *));   
     if (!fuse_argv) {
         fprintf(stderr, "Memory allocation failed\n");
         free(source_dir);
@@ -514,14 +508,14 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Create a new set of arguments for FUSE
+     
     int fuse_argc = 0;
-    fuse_argv[fuse_argc++] = argv[0];  // Program name
+    fuse_argv[fuse_argc++] = argv[0];   
     
-    // Add mount point
+     
     fuse_argv[fuse_argc++] = mount_path;
     
-    // Add foreground option if not already present
+     
     int has_foreground = 0;
     int has_nonempty = 0;
     for (int i = 3; i < argc; i++) {
@@ -538,18 +532,18 @@ int main(int argc, char *argv[]) {
         fuse_argv[fuse_argc++] = "-f";
     }
     
-    // Add nonempty option if not already present
+     
     if (!has_nonempty) {
         fuse_argv[fuse_argc++] = "-o";
         fuse_argv[fuse_argc++] = "nonempty";
     }
     
-    // Copy any additional FUSE options
+     
     for (int i = 3; i < argc; i++) {
         fuse_argv[fuse_argc++] = argv[i];
     }
     
-    // Run FUSE
+     
     int ret = fuse_main(fuse_argc, fuse_argv, &maimai_oper, NULL);
     
     free(fuse_argv);
