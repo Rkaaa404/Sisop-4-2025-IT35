@@ -171,7 +171,7 @@ static int vfs_write(const char *path, const char *buf, size_t size, off_t offse
         bytes_written += write_size;
     }
 
-    write_log("CREATE: %s -> %s", path + 1, chunk_list);  // log hasil pemecahan
+    write_log("WRITE: %s -> %s", path + 1, chunk_list);  // log hasil pemecahan
     return size;
 }
 
@@ -215,12 +215,12 @@ static int vfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) 
     char chunkpath[256];
     snprintf(chunkpath, sizeof(chunkpath), RELICS_DIR"%s.000", path + 1);
 
+    write_log("COPY: %s", path + 1);
+
     FILE *f = fopen(chunkpath, "wb");
     if (!f) return -EACCES;
 
     fclose(f);
-
-    write_log("WRITE: %s", path + 1);
     return 0;
 }
 
@@ -236,6 +236,6 @@ static struct fuse_operations vfs_oper = {
 };
 
 int main(int argc, char *argv[]) {
-    mkdir(RELICS_DIR, 0755);
+    mkdir(RELICS_DIR, 0777);
     return fuse_main(argc, argv, &vfs_oper, NULL);
 }
