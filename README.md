@@ -309,9 +309,39 @@ static int vfs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
 Membaca directory dan mendapatkan nama nama file yang ada di dalamnya
 ### Mount_dir file manipulation
 ```c
+static int vfs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    (void) fi;
+    size_t total_read = 0;
+    int chunk_index = offset / CHUNK_SIZE;
+    size_t chunk_offset = offset % CHUNK_SIZE;
 
+    while (size > 0) {
+        char chunkpath[256];
+        snprintf(chunkpath, sizeof(chunkpath), RELICS_DIR"%s.%03d", path + 1, chunk_index);
+
+        FILE *f = fopen(chunkpath, "rb");
+        if (!f) break;
+
+        fseek(f, chunk_offset, SEEK_SET);
+        size_t bytes = fread(buf + total_read, 1, CHUNK_SIZE - chunk_offset, f);
+        fclose(f);
+
+        if (bytes == 0) break;
+
+        total_read += bytes;
+        size -= bytes;
+        chunk_offset = 0;
+        chunk_index++;
+    }
+
+    return total_read;
+}
 ```
-
+Membaca file dengan melakukan read binary chunk file yang ada di relics directory
+Hasil Baymax:
+![Baymax Read](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/baymaxRead.png)
+Hasil Image yang dicopy:
+![Copied Image Read](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/copyResult.png)
 ### New file in mount_dir chunked in relics
 ```c
 static int vfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
@@ -329,7 +359,7 @@ static int vfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) 
     return 0;
 }
 ```
-
+Jika ada file baru, yang dicopy ke mount_dir. Maka akan membuat log copy, dan membuat file chunk pertama (index 000)
 ```c
 static int vfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     (void) fi;
@@ -370,6 +400,8 @@ static int vfs_write(const char *path, const char *buf, size_t size, off_t offse
     return size;
 }
 ```
+Membagi file menjadi potongan 1KB hingga mencapai size dari file yang ada di mount_dir    
+![Tree Copy](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/copyTree.png)
 ### Mount_dir file complete deletion
 ```c
 static int vfs_unlink(const char *path) {
@@ -394,7 +426,8 @@ static int vfs_unlink(const char *path) {
     return 0;
 }
 ```
-Mengambil file dengan nama serupa dan melakukan penghapusan, dilakukan iterasi hingga index file tersebut tidak ada
+Mengambil file dengan nama serupa dan melakukan penghapusan di relics directory, dilakukan iterasi hingga index file tersebut tidak ada. Gambaran hasil prosedur:   
+![rm tree](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/remTree.png)
 ### FUSE activity log
 Dalam melakukan loging, digunakan fungsi utama berupa *write_log()* yang tertulis sebagai berikut:   
 ```c
