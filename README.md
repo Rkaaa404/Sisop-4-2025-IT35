@@ -5,7 +5,7 @@
 - Gemilang Ananda Lingua (*5027241072*)
 
 ### Table of Contents :
-- [Nomor 1](#nomor-1-gilang)
+- [Nomor 1](#nomor-1-gilang)   
   a. Downloading and Preparing   
   b. Hexadecimal to Image Conversion   
   c. Image File Naming Convention   
