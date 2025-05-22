@@ -502,4 +502,43 @@ Jadi saat proses pemecahan, dilakukan pencatatan nama file yang dibuat ke dalam 
 Hasil log:   
 ![Log Delete](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/deleteLog.png)
 ### Nomor 3 (Rayka)   
+### MEMBALIKKAN NAMA
+### ROT13 FILE TXT YANG TIDAK BERBAHAYA
+```c
+void apply_rot13(char *buf, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        if ('a' <= buf[i] && buf[i] <= 'z')
+            buf[i] = 'a' + (buf[i] - 'a' + 13) % 26;
+        else if ('A' <= buf[i] && buf[i] <= 'Z')
+            buf[i] = 'A' + (buf[i] - 'A' + 13) % 26;
+    }
+}
+```
+Fungsi yang melakuka ROT13 pada string
+```c
+static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
+                    struct fuse_file_info *fi) {
+    int fd;
+    int res;
+
+    char fullpath[MAX_PATH];
+    snprintf(fullpath, sizeof(fullpath), "%s%s", base_dir, path);
+
+    fd = open(fullpath, O_RDONLY);
+    if (fd == -1)
+        return -errno;
+
+    res = pread(fd, buf, size, offset);
+    if (res == -1) {
+        res = -errno;
+    } else if (strstr(path, ".txt") && !is_dangerous(path)) {
+        apply_rot13(buf, res);
+        log_activity("ENCRYPT", path);
+    }
+
+    close(fd);
+    return res;
+}
+```
+Melakukan pengecekan apakah file yang dibuka memiliki ekstensi txt dan bukan nama file yang berbahaya, jika iya maka akan melakukan ROT13 dan menaruh log ENCRYPT
 ### Nomor 4 (Aria)
