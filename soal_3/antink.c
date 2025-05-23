@@ -12,9 +12,9 @@
 #include <sys/stat.h>
 
 #define MAX_PATH 1024
-#define LOG_PATH "/var/log/it24.log"
+#define LOG_PATH "./antink_logs/it24.log"
 
-const char *base_dir = "/mnt/source";
+const char *base_dir = "./it24_host";
 char log_path[] = LOG_PATH;
 
 void log_activity(const char *type, const char *path) {
