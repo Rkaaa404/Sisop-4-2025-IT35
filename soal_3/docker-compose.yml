@@ -1,10 +1,8 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  antink-server:
+  antink-fuse:
     build: .
-    container_name: antink-server
-    privileged: true
     cap_add:
       - SYS_ADMIN
     devices:
@@ -12,7 +10,17 @@ services:
     security_opt:
       - apparmor:unconfined
     volumes:
-      - ./it24_host:/mnt/source
-      - ./antink_mount:/mnt/mount
-      - ./antink_logs:/var/log
-    command: ["./antink", "/mnt/mount", "-f"]
+      - type: bind
+        source: ./it24_host
+        target: /it24_host           # Store Original File
+      - type: bind
+        source: ./antink_logs
+        target: /antink_logs         # Store Log
+      - type: volume
+        source: antink_mount_vol
+        target: /antink_mount        # Mount Point (FUSE, tidak perlu host lihat)
+    tty: true
+    stdin_open: true
+
+volumes:
+  antink_mount_vol:
