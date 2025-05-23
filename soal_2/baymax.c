@@ -139,7 +139,7 @@ static int vfs_read(const char *path, char *buf, size_t size, off_t offset, stru
 static int vfs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     (void) fi;
     size_t bytes_written = 0;
-    char chunk_list[1024] = "";  // untuk menyimpan daftar chunk (untuk log)
+    char chunk_list[1024] = "";
 
     while (bytes_written < size) {
         int chunk_index = (offset + bytes_written) / CHUNK_SIZE;
@@ -160,10 +160,9 @@ static int vfs_write(const char *path, const char *buf, size_t size, off_t offse
         fwrite(buf + bytes_written, 1, write_size, f);
         fclose(f);
 
-        // Tambahkan ke daftar chunk untuk log
         char chunkname[64];
         snprintf(chunkname, sizeof(chunkname), "%s.%03d", path + 1, chunk_index);
-        if (!strstr(chunk_list, chunkname)) {  // hindari duplikasi jika write ke offset yg sama
+        if (!strstr(chunk_list, chunkname)) {  
             if (strlen(chunk_list) > 0) strcat(chunk_list, ", ");
             strcat(chunk_list, chunkname);
         }
@@ -171,7 +170,7 @@ static int vfs_write(const char *path, const char *buf, size_t size, off_t offse
         bytes_written += write_size;
     }
 
-    write_log("WRITE: %s -> %s", path + 1, chunk_list);  // log hasil pemecahan
+    write_log("WRITE: %s -> %s", path + 1, chunk_list);  
     return size;
 }
 
@@ -197,18 +196,6 @@ static int vfs_unlink(const char *path) {
     return 0;
 }
 
-static int vfs_truncate(const char *path, off_t size) {
-    // Hapus semua chunk lama
-    char chunkpath[256];
-    for (int i = 0;; i++) {
-        snprintf(chunkpath, sizeof(chunkpath), RELICS_DIR"%s.%03d", path + 1, i);
-        if (access(chunkpath, F_OK) != 0) break;
-        remove(chunkpath);
-    }
-    return 0;
-}
-
-
 static int vfs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     (void) fi;
 
@@ -232,10 +219,8 @@ static struct fuse_operations vfs_oper = {
     .write   = vfs_write,
     .unlink  = vfs_unlink,
     .create  = vfs_create,
-    .truncate = vfs_truncate,
 };
 
 int main(int argc, char *argv[]) {
-    mkdir(RELICS_DIR, 0777);
     return fuse_main(argc, argv, &vfs_oper, NULL);
 }

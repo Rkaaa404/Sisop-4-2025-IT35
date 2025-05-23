@@ -12,9 +12,9 @@
 #include <sys/stat.h>
 
 #define MAX_PATH 1024
-#define LOG_PATH "/var/log/it24.log"
+#define LOG_PATH "./antink_logs/it24.log"
 
-const char *base_dir = "/mnt/source";
+const char *base_dir = "./it24_host";
 char log_path[] = LOG_PATH;
 
 void log_activity(const char *type, const char *path) {
@@ -22,19 +22,14 @@ void log_activity(const char *type, const char *path) {
     if (logf) {
         time_t now = time(NULL);
         struct tm *t = localtime(&now);
-        fprintf(log, "[%04d-%02d-%02d %02d:%02d:%02d] ",
+        fprintf(logf, "[%04d-%02d-%02d %02d:%02d:%02d] [%s] %s\n",
                 t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
-                t->tm_hour, t->tm_min, t->tm_sec);
-
-        va_list args;
-        va_start(args, format);
-        vfprintf(log, format, args);
-        va_end(args);
-
-        fprintf(log, "\n");
-        fclose(log);
+                t->tm_hour, t->tm_min, t->tm_sec,
+                type, path);
+        fclose(logf);
     }
 }
+
 
 int is_dangerous(const char *name) {
     return strstr(name, "nafis") || strstr(name, "kimcun");
@@ -78,8 +73,8 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         char shown_name[NAME_MAX];
         if (is_dangerous(de->d_name)) {
             reverse_name(de->d_name, shown_name);
-            log_activity("REVERSE", de->d_name);
             log_activity("ALERT", de->d_name);
+            log_activity("REVERSE", de->d_name);
         } else {
             strcpy(shown_name, de->d_name);
         }
