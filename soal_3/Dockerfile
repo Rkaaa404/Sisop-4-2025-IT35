@@ -1,16 +1,14 @@
 FROM ubuntu:20.04
 
-ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    fuse \
+    gcc \
+    libfuse-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && \
-    apt-get install -y fuse libfuse-dev gcc make pkg-config
-
-# Buat folder kerja dan salin source
-WORKDIR /app
 COPY antink.c .
 
-# Compile source
-RUN gcc antink.c -o antink `pkg-config fuse --cflags --libs`
+RUN gcc -Wall `pkg-config fuse --cflags` antink.c -o antink `pkg-config fuse --libs`
 
-# Jalankan FUSE mount
-CMD ["./antink", "/mnt/mount"]
+CMD ["./antink", "-f", "./antink_mount"]
