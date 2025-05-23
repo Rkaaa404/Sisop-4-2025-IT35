@@ -16,7 +16,12 @@
   c. New file in mount_dir chunked in relics    
   d. Mount_dir file complete deletion     
   e. FUSE activity log
-- [Nomor 3](#nomor-3-rayka)
+- [Nomor 3](#nomor-3-rayka)  
+  a. Docker Init  
+  b. Filename detection and reversing  
+  c. Normal txt file text ROT13    
+  d. Logger     
+  e. File changes only in container
 - [Nomor 4](#nomor-4-aria)
 
 ### Nomor 1 (Gilang) 
@@ -502,8 +507,98 @@ Jadi saat proses pemecahan, dilakukan pencatatan nama file yang dibuat ke dalam 
 Hasil log:   
 ![Log Delete](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/deleteLog.png)
 ### Nomor 3 (Rayka)   
-### MEMBALIKKAN NAMA
-### ROT13 FILE TXT YANG TIDAK BERBAHAYA
+### Docker Init    
+```Dockerfile
+FROM ubuntu:20.04
+
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    fuse \
+    gcc \
+    libfuse-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY antink.c .
+
+RUN gcc -Wall `pkg-config fuse --cflags` antink.c -o antink `pkg-config fuse --libs`
+
+CMD ["./antink", "-f", "./antink_mount"]
+```
+Ketika docker dijalankan maka program FUSE antink akan dicompile dan seterusnya, dengan dijalankan secara foreground
+```docker-compose.yml
+version: "3.8"
+
+services:
+  antink-fuse:
+    build: .
+    cap_add:
+      - SYS_ADMIN
+    devices:
+      - /dev/fuse
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - type: bind
+        source: ./it24_host
+        target: /it24_host           # Store Original File
+      - type: bind
+        source: ./antink_logs
+        target: /antink_logs         # Store Log
+      - type: volume
+        source: antink_mount_vol
+        target: /antink_mount        # Mount Point (FUSE, tidak perlu host lihat)
+    tty: true
+    stdin_open: true
+
+volumes:
+  antink_mount_vol:
+
+```
+Pemberlakuan 3 directory, dengan *antink_mount* berupa volume untuk penyimpanan file FUSE, sedangkan *it24_host* menjadi sumber file yang dibaca serta *antink_logs* menajdi tempat menyimpan log, dimana keduanga berupa bind mount.
+Tree sebelum dilakukan penjalanan program:    
+![Soal 3 Tree](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/soal3Tree.png)
+### Filename detection and reversing 
+```
+### Filename detection and reversing
+```c
+int is_dangerous(const char *name) {
+    return strstr(name, "nafis") || strstr(name, "kimcun");
+}
+void reverse_name(const char *src, char *dest) {
+    size_t len = strlen(src);
+    for (size_t i = 0; i < len; i++)
+        dest[i] = src[len - 1 - i];
+    dest[len] = '\0';
+}
+```
+Fungsi pertama berfungsi mengembalikan nilai 1 jika file memiliki nama 'Kimcun' atau 'Nafis' dan 0 jika tidak ada. Sedangkan fungsi selanjutnya berguna untuk membalikkan namafile. Lalu impementasi fungsi ini terdapat pada:
+```c
+static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
+                       off_t offset, struct fuse_file_info *fi) {
+    DIR *dp;
+    struct dirent *de;
+
+    char fullpath[MAX_PATH];
+    snprintf(fullpath, sizeof(fullpath), "%s%s", base_dir, path);
+
+    dp = opendir(fullpath);
+    if (dp == NULL)
+        return -errno;
+
+    while ((de = readdir(dp)) != NULL) {
+        char shown_name[NAME_MAX];
+        if (is_dangerous(de->d_name)) {
+            reverse_name(de->d_name, shown_name);
+            log_activity("ALERT", de->d_name);
+            log_activity("REVERSE", de->d_name);
+        } else {
+            strcpy(shown_name, de->d_name);
+        }
+
+```
+Ketika pembacaan directory dan ditemukan file dengan nama berbahaya ('Nafis' atau 'Kimcun') maka akan melakukan reverse nama file serta mengirim log. Contoh hasil reversing nama file:    
+![Soal 3 Mounted Tree](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/soal3MountDir.png)
+### Normal txt file text ROT13
 ```c
 void apply_rot13(char *buf, size_t len) {
     for (size_t i = 0; i < len; i++) {
@@ -540,5 +635,66 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset,
     return res;
 }
 ```
-Melakukan pengecekan apakah file yang dibuka memiliki ekstensi txt dan bukan nama file yang berbahaya, jika iya maka akan melakukan ROT13 dan menaruh log ENCRYPT
+Melakukan pengecekan apakah file yang dibuka memiliki ekstensi txt dan bukan nama file yang berbahaya, jika iya maka akan melakukan ROT13 dan menaruh log ENCRYPT. Berikut ilustrasin dari ROT13 pada sistem FUSE:   
+Sebelum:    
+![Sebelum ROT13](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/soal3txt.png)    
+Sesudah:    
+![Sesudah ROT13](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/soal3ROT13.png)    
+
+### Logger
+```c
+#define LOG_PATH "./antink_logs/it24.log"
+char log_path[] = LOG_PATH;
+
+void log_activity(const char *type, const char *path) {
+    FILE *logf = fopen(log_path, "a");
+    if (logf) {
+        time_t now = time(NULL);
+        struct tm *t = localtime(&now);
+        fprintf(logf, "[%04d-%02d-%02d %02d:%02d:%02d] [%s] %s\n",
+                t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
+                t->tm_hour, t->tm_min, t->tm_sec,
+                type, path);
+        fclose(logf);
+    }
+}
+```
+Fungsi log_activity menerima menulis log di *./antink_logs/it24.log* secara append (terus bertambah) dan menerima char type untuk mendapatkan type operasi yang dilakukan serta char path yaitu path dari file yang terlibat.
+Seperti pada kasus terjadinya log:
+- Ditemukan file Nafis atau Kimcun:
+```c
+while ((de = readdir(dp)) != NULL) {
+        char shown_name[NAME_MAX];
+        if (is_dangerous(de->d_name)) {
+            reverse_name(de->d_name, shown_name);
+            log_activity("ALERT", de->d_name);
+            log_activity("REVERSE", de->d_name);
+        } else {
+            strcpy(shown_name, de->d_name);
+        }
+```
+Dimana akan mengirim type "ALERT" dan path berupa nama file
+- Membaca isi file normal txt:
+```c
+else if (strstr(path, ".txt") && !is_dangerous(path)) {
+        apply_rot13(buf, res);
+        log_activity("ENCRYPT", path);
+    }
+```
+Ketika dilakukan read file yang tidak berbahaya (tidak mengandung nafis dan kimcun) maka akan melakukan ROT_13 pada saat cat (dibaca) dan memberi log encrypt.
+
+Hasil Log:     
+![Hasil Log](https://github.com/Rkaaa404/Sisop-4-2025-IT35/blob/main/assets/soal3Log.png)
+### File changes only in container
+Agar perubahan file hanya terjadi dalam container, maka docker menggunakan volume untuk mount_dir:
+```docker-compose.yml
+- type: volume
+        source: antink_mount_vol
+        target: /antink_mount        # Mount Point (FUSE, tidak perlu host lihat)
+    tty: true
+    stdin_open: true
+
+volumes:
+  antink_mount_vol:
+```
 ### Nomor 4 (Aria)
